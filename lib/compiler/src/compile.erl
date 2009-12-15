@@ -898,35 +898,35 @@ core_lint_module(St) ->
 			      errors=St#compile.errors ++ Es}}
     end.
 
-makedep(#compile{code = Code, options = Opts} = St) ->
+makedep(#compile{code=Code,options=Opts}=St) ->
     Ifile = St#compile.ifile,
     Ofile = St#compile.ofile,
-    % Get the target of the Makefile rule.
+    %% Get the target of the Makefile rule.
     Target0 = case proplists:get_value(makedep_target, Opts) of
 	undefined ->
-	    % The target is derived from the output filename: eventually
-	    % remove the current working directory to obtain a relative
-	    % path.
+	    %% The target is derived from the output filename: eventually
+	    %% remove the current working directory to obtain a relative
+	    %% path.
 	    shorten_filename(Ofile);
 	T ->
-	    % The caller specified one.
+	    %% The caller specified one.
 	    T
     end,
-    % Quote the target is the called asked for this.
-    Target1 = case lists:member(makedep_quote_target, Opts) of
+    %% Quote the target is the called asked for this.
+    Target1 = case proplists:get_value(makedep_quote_target, Opts) of
 	true ->
-	    % For now, only "$" are replaced by "$$".
+	    %% For now, only "$" are replaced by "$$".
 	    Fun = fun
 		($$) -> "$$";
 		(C)  -> C
 	    end,
-	    lists:map(Fun, Target0);
-	false ->
+	    map(Fun, Target0);
+	_ ->
 	    Target0
     end,
     Target = Target1 ++ ":",
-    % List the dependencies (includes) for this target.
-    {Main_Rule, Phony_Rules} = makedep_add_headers(
+    %% List the dependencies (includes) for this target.
+    {MainRule,PhonyRules} = makedep_add_headers(
       Ifile,          % The input file name.
       Code,           % The parsed source.
       [],             % The list of dependencies already added.
@@ -934,137 +934,135 @@ makedep(#compile{code = Code, options = Opts} = St) ->
       Target,         % The target.
       "",             % Phony targets.
       Opts),
-    % Prepare the content of the Makefile. For instance:
-    %   hello.erl: hello.hrl common.hrl
-    %
-    % Or if phony targets are enabled:
-    %   hello.erl: hello.hrl common.hrl
-    %
-    %   hello.hrl:
-    %
-    %   common.hrl:
-    Makefile = case lists:member(makedep_phony, Opts) of
-	true  -> Main_Rule ++ Phony_Rules;
-	false -> Main_Rule
+    %% Prepare the content of the Makefile. For instance:
+    %%   hello.erl: hello.hrl common.hrl
+    %%
+    %% Or if phony targets are enabled:
+    %%   hello.erl: hello.hrl common.hrl
+    %%
+    %%   hello.hrl:
+    %%
+    %%   common.hrl:
+    Makefile = case proplists:get_value(makedep_phony, Opts) of
+	true -> MainRule ++ PhonyRules;
+	_ -> MainRule
     end,
-    {ok, St#compile{code = list_to_binary(Makefile ++ "\n")}}.
+    {ok, St#compile{code=list_to_binary(Makefile ++ "\n")}}.
 
-makedep_add_headers(Ifile, [{attribute, _, file, {File, _}} | Rest],
-  Included, Line_Len, Main_Target, Phony, Opts) ->
-    % The header "File" exists, add it to the dependencies.
-    {Included1, Line_Len1, Main_Target1, Phony1} = makedep_add_header(
-      Ifile, Included, Line_Len, Main_Target, Phony, File),
-    makedep_add_headers(Ifile, Rest, Included1, Line_Len1,
-      Main_Target1, Phony1, Opts);
-makedep_add_headers(Ifile, [{error, {_, epp, {include, file, File}}} | Rest],
-  Included, Line_Len, Main_Target, Phony, Opts) ->
-    % The header "File" doesn't exist, do we add it to the dependencies?
-    case lists:member(makedep_add_missing, Opts) of
+makedep_add_headers(Ifile, [{attribute,_,file,{File,_}}|Rest],
+  Included, LineLen, MainTarget, Phony, Opts) ->
+    %% The header "File" exists, add it to the dependencies.
+    {Included1,LineLen1,MainTarget1,Phony1} = makedep_add_header(
+      Ifile, Included, LineLen, MainTarget, Phony, File),
+    makedep_add_headers(Ifile, Rest, Included1, LineLen1,
+      MainTarget1, Phony1, Opts);
+makedep_add_headers(Ifile, [{error,{_,epp,{include,file,File}}}|Rest],
+  Included, LineLen, MainTarget, Phony, Opts) ->
+    %% The header "File" doesn't exist, do we add it to the dependencies?
+    case proplists:get_value(makedep_add_missing, Opts) of
         true ->
-            {Included1, Line_Len1, Main_Target1, Phony1} = makedep_add_header(
-              Ifile, Included, Line_Len, Main_Target, Phony, File),
-            makedep_add_headers(Ifile, Rest, Included1, Line_Len1,
-              Main_Target1, Phony1, Opts);
-        false ->
-            makedep_add_headers(Ifile, Rest, Included, Line_Len,
-              Main_Target, Phony, Opts)
+            {Included1,LineLen1,MainTarget1,Phony1} = makedep_add_header(
+              Ifile, Included, LineLen, MainTarget, Phony, File),
+            makedep_add_headers(Ifile, Rest, Included1, LineLen1,
+              MainTarget1, Phony1, Opts);
+        _ ->
+            makedep_add_headers(Ifile, Rest, Included, LineLen,
+              MainTarget, Phony, Opts)
     end;
-makedep_add_headers(Ifile, [_ | Rest], Included, Line_Len,
-  Main_Target, Phony, Opts) ->
+makedep_add_headers(Ifile, [_|Rest], Included, LineLen,
+  MainTarget, Phony, Opts) ->
     makedep_add_headers(Ifile, Rest, Included,
-      Line_Len, Main_Target, Phony, Opts);
-makedep_add_headers(_Ifile, [], _Included, _Line_Len,
-  Main_Target, Phony, _Opts) ->
-    {Main_Target, Phony}.
+      LineLen, MainTarget, Phony, Opts);
+makedep_add_headers(_Ifile, [], _Included, _LineLen,
+  MainTarget, Phony, _Opts) ->
+    {MainTarget,Phony}.
 
-makedep_add_header(Ifile, Included, Line_Len, Main_Target, Phony, File) ->
-    case lists:member(File, Included) of
+makedep_add_header(Ifile, Included, LineLen, MainTarget, Phony, File) ->
+    case member(File, Included) of
 	true ->
-	    % This file was already listed in the dependencies, skip it.
-            {Included, Line_Len, Main_Target, Phony};
+	    %% This file was already listed in the dependencies, skip it.
+            {Included,LineLen,MainTarget,Phony};
 	false ->
-            Included1 = [File | Included],
-	    % Remove "./" in front of the dependency filename.
-	    File1 = case lists:prefix("./", File) of
-		true  -> lists:nthtail(2, File);
-		false -> File
+            Included1 = [File|Included],
+	    %% Remove "./" in front of the dependency filename.
+	    File1 = case File of
+		"./" ++ File0 -> File0;
+		_ -> File
 	    end,
-	    % Prepare the phony target name.
+	    %% Prepare the phony target name.
 	    Phony1 = case File of
 		Ifile -> Phony;
 		_     -> Phony ++ "\n\n" ++ File1 ++ ":"
 	    end,
-	    % Add the file to the dependencies. Lines longer than 76 columns
-	    % are splitted.
+	    %% Add the file to the dependencies. Lines longer than 76 columns
+	    %% are splitted.
 	    if
-		Line_Len + 1 + length(File1) > 76 ->
-                    Line_Len1 = 2 + length(File1),
-                    Main_Target1 = Main_Target ++ " \\\n  " ++ File1,
-                    {Included1, Line_Len1, Main_Target1, Phony1};
+		LineLen + 1 + length(File1) > 76 ->
+                    LineLen1 = 2 + length(File1),
+                    MainTarget1 = MainTarget ++ " \\\n  " ++ File1,
+                    {Included1,LineLen1,MainTarget1,Phony1};
 		true ->
-                    Line_Len1 = Line_Len + 1 + length(File1),
-                    Main_Target1 = Main_Target ++ " " ++ File1,
-                    {Included1, Line_Len1, Main_Target1, Phony1}
+                    LineLen1 = LineLen + 1 + length(File1),
+                    MainTarget1 = MainTarget ++ " " ++ File1,
+                    {Included1,LineLen1,MainTarget1,Phony1}
 	    end
     end.
 
-makedep_output(#compile{code = Code, options = Opts, ofile = Ofile} = St) ->
-    % Write this Makefile (Code) to the selected output.
-    % If no output is specified, the default is to write to a file named after
-    % the output file.
+makedep_output(#compile{code=Code,options=Opts,ofile=Ofile}=St) ->
+    %% Write this Makefile (Code) to the selected output.
+    %% If no output is specified, the default is to write to a file named after
+    %% the output file.
     Output0 = case proplists:get_value(makedep_output, Opts) of
 	undefined ->
-	    % Prepare the default filename.
+	    %% Prepare the default filename.
 	    outfile(filename:basename(Ofile, ".beam"), "Pbeam", Opts);
 	O ->
 	    O
     end,
-    % If the caller specified an io_devive(), there's nothing to do. If he
-    % specified a filename, we must create it. Furthermore, this created file
-    % must be closed before returning.
-    try
-	{Output1, Close_Output} = case Output0 of
-	    _ when is_list(Output0) ->
-		case file:delete(Output0) of
-		    ok ->
-			ok;
-		    {error, enoent} ->
-			ok;
-		    {error, Reason1} ->
-			throw({delete, Output0, Reason1})
+    %% If the caller specified an io_devive(), there's nothing to do. If he
+    %% specified a filename, we must create it. Furthermore, this created file
+    %% must be closed before returning.
+    Ret = case Output0 of
+	_ when is_list(Output0) ->
+	    case file:delete(Output0) of
+		Ret2 when Ret2==ok; Ret2=={error,enoent} ->
+		    case file:open(Output0, write) of
+			{ok,IODev} ->
+			    {ok,IODev,true};
+			{error,Reason2} ->
+			    {error,open,Reason2}
+		    end;
+		{error,Reason1} ->
+		    {error,delete,Reason1}
+	    end;
+	_ ->
+	    {ok,Output0,false}
+    end,
+    case Ret of
+	{ok,Output1,CloseOutput} ->
+	    try
+		%% Write the Makefile.
+		io:fwrite(Output1, "~s", [Code]),
+		%% Close the file if relevant.
+		if
+		    CloseOutput -> file:close(Output1);
+		    true -> ok
 		end,
-		case file:open(Output0, write) of
-		    {ok, IO_Dev} ->
-			{IO_Dev, true};
-		    {error, Reason2} ->
-			throw({open, Output0, Reason2})
-		end;
-	    _ ->
-		{Output0, false}
-	end,
-	% Write the Makefile.
-	io:fwrite(Output1, "~s", [Code]),
-	% Close the file if relevant.
-	if
-	    Close_Output ->
-		file:close(Output1);
-	    true ->
-		ok
-	end,
-	{ok, St}
-    catch
-	throw:{open, _Name, Reason} ->
-	    % Couldn't open output Makefile.
-	    Err = {St#compile.ifile,[{none, ?MODULE, {open, Reason}}]},
-	    {error, St#compile{errors = St#compile.errors ++ [Err]}};
-	throw:{delete, Name, Reason} ->
-	    % Couldn't open output Makefile.
-	    Err = {St#compile.ifile,[{none, ?MODULE, {delete, Name, Reason}}]},
-	    {error, St#compile{errors = St#compile.errors ++ [Err]}};
-	exit:_ ->
-	    % Couldn't write to output Makefile.
-	    Err = {St#compile.ifile, [{none, ?MODULE, write_error}]},
-	    {error, St#compile{errors = St#compile.errors ++ [Err]}}
+		{ok,St}
+	    catch
+		exit:_ ->
+		    %% Couldn't write to output Makefile.
+		    Err = {St#compile.ifile,[{none,?MODULE,write_error}]},
+		    {error,St#compile{errors=St#compile.errors++[Err]}}
+	    end;
+	{error,open,Reason} ->
+	    %% Couldn't open output Makefile.
+	    Err = {St#compile.ifile,[{none,?MODULE,{open,Reason}}]},
+	    {error,St#compile{errors=St#compile.errors++[Err]}};
+	{error,delete,Reason} ->
+	    %% Couldn't open output Makefile.
+	    Err = {St#compile.ifile,[{none,?MODULE,{delete,Output0,Reason}}]},
+	    {error,St#compile{errors=St#compile.errors++[Err]}}
     end.
 
 %% expand_module(State) -> State'
