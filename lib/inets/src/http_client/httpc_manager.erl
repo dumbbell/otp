@@ -658,22 +658,15 @@ handle_connect_and_send(_StarterPid, ReqId, HandlerPid, Result,
 	    ets:insert(HandlerDb, HandlerInfo2),
 	    ok;
 
-	[#handler_info{from = From}] ->
+	[#handler_info{}] ->
 	    error_report(Profile, 
 			 "handler (~p) failed to connect and/or "
 			 "send request ~p"
 			 "~n   Error: ~p", [HandlerPid, ReqId, Result]),
 	    ?hcri("received connect-and-send error", [{result, Result}]),
-	    Reason2 = 
-		case Result of
-		    {error, Reason} ->
-			{failed_connecting, Reason};
-		    _ ->
-			{failed_connecting, Result}
-		end,
-	    DummyReq = #request{id = ReqId}, 
-	    httpc_response:send(From, httpc_response:error(DummyReq, Reason2)),
-	    %% gen_server:reply(From, Error),
+	    %% We don't need to send a response to the original caller
+	    %% because the handler already sent one in its terminate
+	    %% function.
 	    ets:delete(HandlerDb, ReqId), 
 	    ok;
 
@@ -689,13 +682,11 @@ handle_failed_starting_handler(_StarterPid, ReqId, Error,
 			       #state{profile_name = Profile, 
 				      handler_db = HandlerDb}) ->
     case ets:lookup(HandlerDb, ReqId) of
-	[#handler_info{state = canceled, 
-		       from  = From}] ->
+	[#handler_info{state = canceled}] ->
 	    error_report(Profile, 
 			 "failed starting handler for request ~p"
 			 "~n   Error: ~p", [ReqId, Error]),
 	    request_canceled(Profile, ReqId), % Fake signal from handler
-	    gen_server:reply(From, Error),
 	    ets:delete(HandlerDb, ReqId), 
 	    ok;
 
@@ -703,7 +694,15 @@ handle_failed_starting_handler(_StarterPid, ReqId, Error,
 	    error_report(Profile, 
 			 "failed starting handler for request ~p"
 			 "~n   Error: ~p", [ReqId, Error]),
-	    gen_server:reply(From, Error),
+	    Reason2 = 
+		case Error of
+		    {error, Reason} ->
+			{failed_connecting, Reason};
+		    _ ->
+			{failed_connecting, Error}
+		end,
+	    DummyReq = #request{id = ReqId}, 
+	    httpc_response:send(From, httpc_response:error(DummyReq, Reason2)),
 	    ets:delete(HandlerDb, ReqId), 
 	    ok;
 
@@ -719,8 +718,25 @@ maybe_handle_terminating_starter(MeybeStarterPid, Reason, HandlerDb) ->
     Pattern = #handler_info{starter = MeybeStarterPid, _ = '_'}, 
     case ets:match_object(HandlerDb, Pattern) of
 	[#handler_info{id = ReqId, from = From, state = initiating}] ->
-	    Error = {error, {failed_starting_request_handler, Reason}}, 
-	    gen_server:reply(From, Error),
+	    %% The starter process crashed. We don't know if the handler
+	    %% was ever started and thus, can't determine if he sent an
+	    %% answer to the original caller.
+	    %%
+	    %% To be safe, we send one. The drawback is that two answer
+	    %% could be sent for the same request:
+	    %%     o  If the request was synchronous, the caller process
+	    %%        could receive an unexpected message.
+	    %%     o  If the request was asynchronous, the caller process
+	    %%        could receive the answer twice.
+	    Reason2 = 
+		case Reason of
+		    {error, Error} ->
+			{failed_connecting, Error};
+		    _ ->
+			{failed_connecting, Reason}
+		end,
+	    DummyReq = #request{id = ReqId}, 
+	    httpc_response:send(From, httpc_response:error(DummyReq, Reason2)),
 	    ets:delete(HandlerDb, ReqId),
 	    ok;
 	_ ->
