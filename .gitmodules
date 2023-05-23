@@ -1,0 +1,4 @@
+[submodule "erts/emulator/tracy"]
+	path = erts/emulator/tracy
+	url = https://github.com/dumbbell/tracy.git
+	branch = build-on-FreeBSD

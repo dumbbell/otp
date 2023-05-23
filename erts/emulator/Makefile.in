@@ -918,6 +918,9 @@ $(OBJDIR)/%.o: nifs/common/%.c
 $(OBJDIR)/%.o: nifs/$(ERLANG_OSTYPE)/%.c
 	$(V_CC) $(CFLAGS) $(INCLUDES) -Inifs/common -Inifs/$(ERLANG_OSTYPE) -I../etc/$(ERLANG_OSTYPE) -c $< -o $@
 
+$(OBJDIR)/%.o: tracy/public/%.cpp
+	$(V_CXX) $(INCLUDES) $(GEN_OPT_FLGS) $(CXXFLAGS) -c $< -o $@
+
 #
 # Build the beamasm sources.
 #
@@ -1171,6 +1174,16 @@ DRV_OBJS = \
 	$(OBJDIR)/ram_file_drv.o
 endif
 
+TRACY_CFLAGS = -Itracy/public -DTRACY_ENABLE -DTRACY_ON_DEMAND
+TRACY_LIBS = -lexecinfo
+
+CFLAGS += $(TRACY_CFLAGS)
+CXXFLAGS += $(TRACY_CFLAGS)
+LIBS += $(TRACY_LIBS)
+
+TRACY_OBJS = \
+	$(OBJDIR)/TracyClient.o
+
 ifneq ($(STATIC_NIFS),no)
 STATIC_NIF_LIBS = $(STATIC_NIFS)
 DEPLIBS += $(STATIC_NIF_LIBS)
@@ -1215,7 +1228,7 @@ BASE_OBJS = $(EMU_OBJS)
 endif
 
 BASE_OBJS += $(COMMON_OBJS) $(RUN_OBJS) $(OS_OBJS) $(EXTRA_BASE_OBJS) \
-	$(LTTNG_OBJS) $(DRV_OBJS) $(NIF_OBJS)
+	$(LTTNG_OBJS) $(DRV_OBJS) $(NIF_OBJS) $(TRACY_OBJS)
 
 PROF_OBJS = $(patsubst %.o,%$(PROFILE_MARKER).o,$(PROFILE_OBJS)) $(BASE_OBJS)
 

@@ -29,6 +29,8 @@
 #include "erl_threads.h"
 #include "erl_mmap.h"
 
+#include <tracy/TracyC.h>
+
 typedef enum {
     ERTS_ALC_S_INVALID = 0,
 
@@ -248,6 +250,7 @@ void *erts_alloc(ErtsAlcType_t type, Uint size)
             size);
     if (!res)
 	erts_alloc_n_enomem(ERTS_ALC_T2N(type), size);
+    TracyCAllocNS(res, size, 10, ERTS_ALC_N2TD(ERTS_ALC_T2N(type)));
     ERTS_MSACC_POP_STATE_X();
     return res;
 }
@@ -264,6 +267,8 @@ void *erts_realloc(ErtsAlcType_t type, void *ptr, Uint size)
 	size);
     if (!res)
 	erts_realloc_n_enomem(ERTS_ALC_T2N(type), ptr, size);
+    TracyCFreeNS(ptr, 10, ERTS_ALC_N2TD(ERTS_ALC_T2N(type)));
+    TracyCAllocNS(res, size, 10, ERTS_ALC_N2TD(ERTS_ALC_T2N(type)));
     ERTS_MSACC_POP_STATE_X();
     return res;
 }
@@ -272,6 +277,7 @@ ERTS_ALC_INLINE
 void erts_free(ErtsAlcType_t type, void *ptr)
 {
     ERTS_MSACC_PUSH_AND_SET_STATE_X(ERTS_MSACC_STATE_ALLOC);
+    TracyCFreeNS(ptr, 10, ERTS_ALC_N2TD(ERTS_ALC_T2N(type)));
     (*erts_allctrs[ERTS_ALC_T2A(type)].free)(
 	type,
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,
@@ -289,6 +295,7 @@ void *erts_alloc_fnf(ErtsAlcType_t type, Uint size)
 	type,
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,
 	size);
+    TracyCAllocNS(res, size, 10, ERTS_ALC_N2TD(ERTS_ALC_T2N(type)));
     ERTS_MSACC_POP_STATE_X();
     return res;
 }
@@ -304,6 +311,8 @@ void *erts_realloc_fnf(ErtsAlcType_t type, void *ptr, Uint size)
 	erts_allctrs[ERTS_ALC_T2A(type)].extra,
 	ptr,
 	size);
+    TracyCFreeNS(ptr, 10, ERTS_ALC_N2TD(ERTS_ALC_T2N(type)));
+    TracyCAllocNS(res, size, 10, ERTS_ALC_N2TD(ERTS_ALC_T2N(type)));
     ERTS_MSACC_POP_STATE_X();
     return res;
 }
